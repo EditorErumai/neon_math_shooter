@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b1c">
+  <title>Neon Math Space Shooter</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <h1>🚀 NEON MATH SHOOTER</h1>
+      <p>Solve the math. Shoot the targets. Survive space!</p>
+    </header>
+
+    <section class="account-panel">
+      <input id="email" type="email" placeholder="Your email">
+      <input id="password" type="password" placeholder="Password">
+      <button id="signupBtn">Sign Up</button>
+      <button id="loginBtn">Log In</button>
+      <button id="logoutBtn" hidden>Log Out</button>
+      <p id="authStatus">Sign in to save scores to the global leaderboard.</p>
+    </section>
+
+    <section class="game-panel">
+      <div class="stats">
+        <span>Score: <b id="score">0</b></span>
+        <span>Level: <b id="level">1</b></span>
+        <span>Lives: <b id="lives">3</b></span>
+      </div>
+
+      <div class="question">
+        <span id="question">Ready for the challenge?</span>
+      </div>
+
+      <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+      <div class="controls">
+        <button id="startBtn">▶ Start Game</button>
+        <button id="musicBtn">♫ Music: Off</button>
+      </div>
+
+      <p class="instructions">
+        Move with ← → or A / D. Press SPACE to shoot.
+        On mobile, use the controls below.
+      </p>
+
+      <div class="mobile-controls">
+        <button id="leftBtn" aria-label="Move left">◀</button>
+        <button id="shootBtn">SHOOT</button>
+        <button id="rightBtn" aria-label="Move right">▶</button>
+      </div>
+
+      <p id="gameStatus" role="status">Press Start Game to begin!</p>
+    </section>
+
+    <section class="leaderboard">
+      <h2>🏆 Global Leaderboard</h2>
+      <button id="refreshScoresBtn">Refresh Scores</button>
+      <ol id="leaderboardList">
+        <li>Sign in and play to submit a score.</li>
+      </ol>
+    </section>
+
+    <footer>
+      <p>Made for math champions. No power-ups. No boss fights. 💜</p>
+    </footer>
+  </main>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

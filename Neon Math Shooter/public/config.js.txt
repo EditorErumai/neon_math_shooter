@@ -1,0 +1,4 @@
+export const SUPABASE_URL = "https://lhfiapnfjwaptisiciaq.supabase.co";
+
+export const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_uyOC4gVqGxFj4DIKRyqqFQ_PK_xcPv7";

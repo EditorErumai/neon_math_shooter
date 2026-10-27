@@ -1,0 +1,620 @@
+
+import { createClient } from
+  "https://esm.sh/@supabase/supabase-js@2";
+
+import {
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY
+} from "./config.js";
+
+const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY
+);
+
+const $ = (id) => document.getElementById(id);
+
+const canvas = $("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let user = null;
+let running = false;
+let gameOver = false;
+let score = 0;
+let level = 1;
+let lives = 3;
+let shipX = canvas.width / 2;
+let bullets = [];
+let targets = [];
+let particles = [];
+let stars = [];
+let keys = {};
+let lastTime = 0;
+let spawnTimer = 0;
+let question = null;
+let scoreSubmitted = false;
+
+const music = new Audio("./bg_music.mp3");
+music.loop = true;
+music.volume = 0.35;
+
+for (let i = 0; i < 90; i++) {
+  stars.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    size: Math.random() * 2 + 0.5,
+    speed: Math.random() * 35 + 10
+  });
+}
+
+function status(message) {
+  $("gameStatus").textContent = message;
+}
+
+function updateStats() {
+  $("score").textContent = score;
+  $("level").textContent = level;
+  $("lives").textContent = lives;
+}
+
+function newQuestion() {
+  const operations = level < 3
+    ? ["+", "-"]
+    : ["+", "-", "×"];
+
+  const op = operations[
+    Math.floor(Math.random() * operations.length)
+  ];
+
+  let a = Math.floor(Math.random() * (8 + level * 2)) + 2;
+  let b = Math.floor(Math.random() * (8 + level * 2)) + 2;
+  let answer;
+
+  if (op === "+") answer = a + b;
+  else if (op === "-") {
+    if (b > a) [a, b] = [b, a];
+    answer = a - b;
+  } else answer = a * b;
+
+  question = { a, b, op, answer };
+
+  $("question").textContent =
+    `${a} ${op} ${b} = ?`;
+
+  makeTargets(answer);
+}
+
+function makeTargets(answer) {
+  targets = [];
+
+  const values = new Set([answer]);
+
+  while (values.size < 3) {
+    const offset =
+      Math.floor(Math.random() * (8 + level * 2)) + 1;
+
+    const wrong = answer +
+      (Math.random() < 0.5 ? -offset : offset);
+
+    if (wrong >= 0 && wrong !== answer) {
+      values.add(wrong);
+    }
+  }
+
+  const choices = [...values].sort(() => Math.random() - 0.5);
+
+  choices.forEach((value, i) => {
+    targets.push({
+      x: 140 + i * 260,
+      y: 65,
+      radius: 30,
+      value,
+      correct: value === answer,
+      speed: 38 + level * 8,
+      color: ["#00f5ff", "#ff3cac", "#a855f7"][i]
+    });
+  });
+
+  spawnTimer = 0;
+}
+
+function resetGame() {
+  score = 0;
+  level = 1;
+  lives = 3;
+  shipX = canvas.width / 2;
+  bullets = [];
+  targets = [];
+  particles = [];
+  scoreSubmitted = false;
+  gameOver = false;
+  running = true;
+  lastTime = 0;
+
+  updateStats();
+  newQuestion();
+  status("Solve the question and shoot the correct answer!");
+  $("startBtn").textContent = "↻ Restart Game";
+
+  requestAnimationFrame(loop);
+}
+
+function shoot() {
+  if (!running || gameOver) return;
+
+  bullets.push({
+    x: shipX,
+    y: canvas.height - 72,
+    speed: 440
+  });
+}
+
+function loseLife(message) {
+  lives--;
+  updateStats();
+
+  if (lives <= 0) {
+    endGame();
+  } else {
+    status(message);
+    newQuestion();
+  }
+}
+
+function endGame() {
+  running = false;
+  gameOver = true;
+  status(`Game over! Final score: ${score}`);
+  $("startBtn").textContent = "▶ Play Again";
+  submitScore();
+}
+
+function burst(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 180,
+      vy: (Math.random() - 0.5) * 180,
+      life: 0.45,
+      color
+    });
+  }
+}
+
+function update(dt) {
+  if (!running) return;
+
+  if (keys.ArrowLeft || keys.a || keys.A) {
+    shipX -= 320 * dt;
+  }
+
+  if (keys.ArrowRight || keys.d || keys.D) {
+    shipX += 320 * dt;
+  }
+
+  shipX = Math.max(28, Math.min(canvas.width - 28, shipX));
+
+  stars.forEach(star => {
+    star.y += star.speed * dt;
+
+    if (star.y > canvas.height) {
+      star.y = 0;
+      star.x = Math.random() * canvas.width;
+    }
+  });
+
+  bullets.forEach(bullet => {
+    bullet.y -= bullet.speed * dt;
+  });
+
+  bullets = bullets.filter(bullet => bullet.y > -10);
+
+  targets.forEach(target => {
+    target.y += target.speed * dt;
+  });
+
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const target = targets[i];
+
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const bullet = bullets[j];
+      const dx = bullet.x - target.x;
+      const dy = bullet.y - target.y;
+
+      if (Math.hypot(dx, dy) < target.radius + 5) {
+        bullets.splice(j, 1);
+        targets.splice(i, 1);
+        burst(target.x, target.y, target.color);
+
+        if (target.correct) {
+          score += 10;
+          level = Math.floor(score / 100) + 1;
+          updateStats();
+          status("Correct! +10 points!");
+          newQuestion();
+        } else {
+          loseLife("Wrong answer! You lost a life.");
+        }
+
+        break;
+      }
+    }
+  }
+
+  if (!running) return;
+
+  if (targets.some(t => t.y > canvas.height - 100)) {
+    loseLife("Target escaped! You lost a life.");
+  }
+
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  });
+
+  particles = particles.filter(p => p.life > 0);
+}
+
+function drawShip() {
+  const y = canvas.height - 43;
+
+  ctx.save();
+  ctx.translate(shipX, y);
+
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = "#00f5ff";
+
+  ctx.fillStyle = "#00f5ff";
+  ctx.beginPath();
+  ctx.moveTo(0, -23);
+  ctx.lineTo(19, 17);
+  ctx.lineTo(0, 10);
+  ctx.lineTo(-19, 17);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(0, -4, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ff3cac";
+  ctx.fillRect(-5, 15, 10, 9 + Math.random() * 5);
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const background = ctx.createLinearGradient(
+    0, 0, 0, canvas.height
+  );
+
+  background.addColorStop(0, "#090d26");
+  background.addColorStop(1, "#160b2c");
+
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  stars.forEach(star => {
+    ctx.fillStyle = "#dce9ff";
+    ctx.globalAlpha = 0.4 + star.size / 4;
+    ctx.fillRect(star.x, star.y, star.size, star.size);
+  });
+
+  ctx.globalAlpha = 1;
+
+  targets.forEach(target => {
+    ctx.save();
+
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = target.color;
+    ctx.fillStyle = "#151832";
+    ctx.strokeStyle = target.color;
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.arc(
+      target.x, target.y,
+      target.radius, 0, Math.PI * 2
+    );
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 20px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      String(target.value),
+      target.x,
+      target.y
+    );
+
+    ctx.restore();
+  });
+
+  bullets.forEach(bullet => {
+    ctx.save();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#00f5ff";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(bullet.x - 2, bullet.y - 8, 4, 16);
+    ctx.restore();
+  });
+
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life / 0.45);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 4, 4);
+  });
+
+  ctx.globalAlpha = 1;
+  drawShip();
+
+  if (!running) {
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 27px Arial";
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#a855f7";
+    ctx.fillText(
+      gameOver ? "GAME OVER" : "NEON MATH SHOOTER",
+      canvas.width / 2,
+      canvas.height / 2
+    );
+    ctx.shadowBlur = 0;
+
+    if (!gameOver) {
+      ctx.font = "16px Arial";
+      ctx.fillText(
+        "Press Start Game to play",
+        canvas.width / 2,
+        canvas.height / 2 + 32
+      );
+    }
+  }
+}
+
+function loop(timestamp) {
+  if (!running) {
+    draw();
+    return;
+  }
+
+  const dt = Math.min(
+    (timestamp - (lastTime || timestamp)) / 1000,
+    0.04
+  );
+
+  lastTime = timestamp;
+
+  update(dt);
+  draw();
+
+  if (running) requestAnimationFrame(loop);
+}
+
+async function submitScore() {
+  if (!user || score <= 0 || scoreSubmitted) return;
+
+  scoreSubmitted = true;
+
+  const displayName =
+    user.user_metadata?.display_name ||
+    user.email?.split("@")[0] ||
+    "Player";
+
+  const { error } = await supabase
+    .from("scores")
+    .insert({
+      user_id: user.id,
+      display_name: displayName,
+      score
+    });
+
+  if (error) {
+    console.error("Score submission failed:", error.message);
+    status("Game over! Score saving failed. Check your connection.");
+    scoreSubmitted = false;
+  } else {
+    status(`Game over! Score ${score} saved to the leaderboard.`);
+    loadLeaderboard();
+  }
+}
+
+async function loadLeaderboard() {
+  const list = $("leaderboardList");
+  list.replaceChildren();
+
+  const loading = document.createElement("li");
+  loading.textContent = "Loading scores...";
+  list.appendChild(loading);
+
+  const { data, error } = await supabase
+    .from("scores")
+    .select("display_name, score, created_at")
+    .order("score", { ascending: false })
+    .limit(10);
+
+  list.replaceChildren();
+
+  if (error) {
+    const item = document.createElement("li");
+    item.textContent = "Could not load scores. Check Supabase policies.";
+    list.appendChild(item);
+    console.error(error.message);
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "No scores yet. Be the first champion!";
+    list.appendChild(item);
+    return;
+  }
+
+  data.forEach((entry, index) => {
+    const item = document.createElement("li");
+    item.textContent =
+      `#${index + 1} — ${entry.display_name}: ${entry.score}`;
+    list.appendChild(item);
+  });
+}
+
+async function refreshAuth() {
+  const { data } = await supabase.auth.getSession();
+  user = data.session?.user ?? null;
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  $("authStatus").textContent = user
+    ? `Logged in as ${user.email}`
+    : "Sign in to save scores to the global leaderboard.";
+
+  $("logoutBtn").hidden = !user;
+  $("loginBtn").hidden = !!user;
+  $("signupBtn").hidden = !!user;
+}
+
+$("signupBtn").addEventListener("click", async () => {
+  const email = $("email").value.trim();
+  const password = $("password").value;
+
+  if (!email || password.length < 6) {
+    $("authStatus").textContent =
+      "Enter a valid email and a password of at least 6 characters.";
+    return;
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        display_name: email.split("@")[0]
+      }
+    }
+  });
+
+  if (error) {
+    $("authStatus").textContent = error.message;
+    return;
+  }
+
+  user = data.session?.user ?? null;
+  updateAuthUI();
+
+  $("authStatus").textContent = user
+    ? "Account created and logged in!"
+    : "Account created! Check your email to confirm your account, then log in.";
+});
+
+$("loginBtn").addEventListener("click", async () => {
+  const email = $("email").value.trim();
+  const password = $("password").value;
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    $("authStatus").textContent = error.message;
+    return;
+  }
+
+  user = data.user;
+  updateAuthUI();
+  $("authStatus").textContent = `Welcome back, ${email}!`;
+});
+
+$("logoutBtn").addEventListener("click", async () => {
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    $("authStatus").textContent = error.message;
+    return;
+  }
+
+  user = null;
+  updateAuthUI();
+});
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  user = session?.user ?? null;
+  updateAuthUI();
+});
+
+$("startBtn").addEventListener("click", resetGame);
+
+$("refreshScoresBtn").addEventListener(
+  "click", loadLeaderboard
+);
+
+$("musicBtn").addEventListener("click", async () => {
+  if (music.paused) {
+    try {
+      await music.play();
+      $("musicBtn").textContent = "♫ Music: On";
+    } catch {
+      status("Music couldn't play. Check that bg_music.mp3 exists.");
+    }
+  } else {
+    music.pause();
+    $("musicBtn").textContent = "♫ Music: Off";
+  }
+});
+
+window.addEventListener("keydown", event => {
+  keys[event.key] = true;
+
+  if (
+    ["ArrowLeft", "ArrowRight", " "].includes(event.key)
+  ) {
+    event.preventDefault();
+  }
+
+  if (event.code === "Space" && !event.repeat) {
+    shoot();
+  }
+});
+
+window.addEventListener("keyup", event => {
+  keys[event.key] = false;
+});
+
+function bindHold(buttonId, key) {
+  const button = $(buttonId);
+
+  button.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    keys[key] = true;
+    button.setPointerCapture?.(event.pointerId);
+  });
+
+  const release = () => {
+    keys[key] = false;
+  };
+
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("lostpointercapture", release);
+}
+
+bindHold("leftBtn", "ArrowLeft");
+bindHold("rightBtn", "ArrowRight");
+
+$("shootBtn").addEventListener("pointerdown", event => {
+  event.preventDefault();
+  shoot();
+});
+
+draw();
+refreshAuth();
+loadLeaderboard();
